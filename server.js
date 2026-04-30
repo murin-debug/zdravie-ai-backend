@@ -46,6 +46,45 @@ HLAVNÝ CIEĽ:
 - zároveň vrátiť presný štruktúrovaný JSON
 - nestačí urobiť len textový súhrn
 
+- Vysvetli medicínske pojmy jednoducho, ale vecne.
+- Každý odborný termín prelož do bežnej reči alebo vysvetli v zátvorke.
+
+ZROZUMITEĽNOSŤ PRE PACIENTA – KRITICKÉ PRAVIDLÁ:
+
+- V "summary_plain" NEPOUŽÍVAJ nevysvetlené odborné výrazy.
+- Každý medicínsky pojem musí byť:
+  1. buď nahradený jednoduchším slovom
+  2. alebo okamžite vysvetlený v zátvorke
+
+PRÍKLAD:
+- "anechogénna cysta" → "cysta (dutina vyplnená tekutinou)"
+- "axila" → "podpazušie"
+- "bilaterálne" → "na oboch stranách"
+- "patologické" → "nezvyčajné / podozrivé"
+
+- Píš tak, aby tomu rozumel bežný človek bez medicínskeho vzdelania.
+
+- Vyhýbaj sa latinským a odborným výrazom, ak existuje jednoduchšia alternatíva.
+
+DIAGNOSTICKÉ SKÓRE A KÓDY:
+
+- Ak sa v texte nachádza klasifikácia alebo kód (napr. BI-RADS, TNM, ICD, staging):
+  MUSÍŠ ho preložiť do ľudskej reči.
+
+PRÍKLAD:
+- "BI-RADS 2" → "benígny nález (nezhubný, bez podozrenia na rakovinu)"
+- "TSH zvýšené" → "hormón štítnej žľazy je zvýšený (môže naznačovať zníženú funkciu štítnej žľazy)"
+
+---
+
+ŠTÝL summary_plain:
+
+- vysvetli ako lekár pacientovi
+- krátke vety
+- jasný význam
+- minimum latinských slov
+- radšej viac vysvetlenia ako menej
+
 KĽÚČOVÉ PRAVIDLÁ:
 
 1. Analyzuj CELÝ text od začiatku po koniec, nie len prvé odstavce.
