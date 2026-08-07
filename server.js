@@ -1,28 +1,85 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import rateLimit from "express-rate-limit";
 import OpenAI from "openai";
 
 dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: "2mb" }));
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+
+const isProduction = process.env.NODE_ENV === "production";
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions = {
+  origin(origin, callback) {
+    // Requests without Origin are useful for local/API diagnostics.
+    if (!origin) {
+      return callback(null, !isProduction);
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("CORS_NOT_ALLOWED"));
+  },
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+  maxAge: 86400
+};
+
+app.use(cors(corsOptions));
+app.use(express.json({ limit: "500kb", strict: true }));
+
+const analyzeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    result: "Príliš veľa požiadaviek. Skúste to, prosím, neskôr."
+  }
+});
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
+  timeout: 60_000,
+  maxRetries: 1
 });
 
 app.get("/", (req, res) => {
   res.send("AI backend beží");
 });
 
-app.post("/analyze", async (req, res) => {
+app.post("/analyze", analyzeLimiter, async (req, res) => {
   const { text, specialty = "", documentType = "" } = req.body || {};
 
-  if (!text || !text.trim()) {
+  if (typeof text !== "string" || !text.trim()) {
     return res.status(400).json({
       result: "Chýba text lekárskej správy."
+    });
+  }
+
+  if (text.length > 100_000) {
+    return res.status(413).json({
+      result: "Dokument je príliš dlhý. Skúste ho rozdeliť na menšie časti."
+    });
+  }
+
+  if (
+    typeof specialty !== "string" ||
+    typeof documentType !== "string" ||
+    specialty.length > 100 ||
+    documentType.length > 100
+  ) {
+    return res.status(400).json({
+      result: "Neplatné údaje požiadavky."
     });
   }
 
@@ -30,6 +87,7 @@ app.post("/analyze", async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
+      store: false,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -246,13 +304,12 @@ ${text}
     });
 
     const raw = completion.choices?.[0]?.message?.content || "{}";
-    console.log("RAW AI RESPONSE:", raw);
 
     let parsed;
     try {
       parsed = JSON.parse(raw);
-    } catch (parseError) {
-      console.error("JSON PARSE ERROR:", parseError);
+    } catch {
+      console.error("AI_RESPONSE_PARSE_ERROR");
       return res.status(500).json({
         result: "AI vrátila neplatný JSON výstup."
       });
@@ -286,19 +343,38 @@ ${text}
             }
     };
 
-    console.log("NORMALIZED MEDICATIONS:", normalized.medications);
-    console.log("NORMALIZED LAB RESULTS:", normalized.lab_results);
-
     res.json({
       result: normalized
     });
   } catch (error) {
-    console.error("OPENAI ERROR:", error);
+    console.error("OPENAI_REQUEST_ERROR", {
+      name: error?.name,
+      status: error?.status,
+      code: error?.code,
+      requestId: error?.request_id
+    });
 
     res.status(500).json({
-      result: "AI analýza zlyhala: " + error.message
+      result: "AI analýza momentálne zlyhala. Skúste to, prosím, neskôr."
     });
   }
+});
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  if (error?.message === "CORS_NOT_ALLOWED") {
+    return res.status(403).json({ result: "Prístup z tejto domény nie je povolený." });
+  }
+
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({ result: "Dokument je príliš veľký." });
+  }
+
+  console.error("UNEXPECTED_SERVER_ERROR", { name: error?.name });
+  return res.status(500).json({ result: "Nastala neočakávaná chyba servera." });
 });
 
 const PORT = process.env.PORT || 3000;
